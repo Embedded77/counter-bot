@@ -16,7 +16,7 @@ Set Up:
 7. npm install
 8. node index.js to run it.
 
-
+When running this on a vps, you may have to disable session protection here: https://create.roblox.com/settings/advanced
 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
