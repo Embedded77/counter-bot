@@ -7,7 +7,8 @@
     "accounts":[{
           "cookie":".ROBLOSECURITY=PUTITHERE;"
       "TOTP":"OTP CODE HERE",
-        "RoliVerification":"_RoliVerification=PUTITHERE;"
+        "RoliVerification":"_RoliVerification=PUTITHERE;",
+        "UserID":123
     }
 ],
     "nft":{
