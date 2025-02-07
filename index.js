@@ -210,7 +210,10 @@ async function getInventory(id, cookie) {
 			console.log(`Error fetching inventory: ${response.statusText}`);
             return []
 		}
-
+        if (!data || !data.data) {
+            logToFile(`Invalid inventory response: ${JSON.stringify(data)}`);
+            return [];
+        }
 		const data = await response.json();
 		return data.data;
 	} catch (error) {
@@ -311,10 +314,8 @@ async function sendRequest(account) {
 		});
         
 		const data = await response.json();
-        if (!data || !data.data) {
-            logToFile(`Invalid inventory response for user ${id}: ${JSON.stringify(data)}`);
-            return [];
-        }
+        console.log(data)
+
 		logToFile("Request successful:", data);
 	} catch (error) {
 		logToFile(error)
@@ -332,22 +333,25 @@ config.accounts.forEach(account => {
 
 let checked = {}
 async function init() {
-
+    await fetchRolimonsValues();
 	config.accounts.forEach(async account => {
 
 		let cookie = account.cookie
         let myitems = await getInventory(account.UserID, cookie);
         for (let b = 0; b < myitems.length; b++) {
             let i = myitems[b];
-            if (myValues[i.assetId] == undefined || config.nft[i.assetId] || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][2] <= config.overrapcap)) {
+            if (myValues[i.assetId] == undefined || config.nft[i.assetId]!=undefined || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][3]!=-1 && myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][4] <= config.overrapcap) || i.isOnHold != false) {
                 delete myitems[b];
             }
         }
+        console.log(myitems)
         myitems = myitems.filter(function(el) {
             return el != null;
         });
     
-        shuffleArray(myitems)
+        await shuffleArray(myitems)
+        console.log("myitems")
+        console.log(myitems)
 		fetch("https://auth.roblox.com/v2/logout", {
 			headers: {
 				"accept": "*/*",
@@ -366,7 +370,7 @@ async function init() {
 			method: "POST",
 		}).then(async res => {
 			let csrf = res.headers.get("x-csrf-token")
-			await fetchRolimonsValues();
+	
 			let inbounds = (await loadInboundTrades(cookie)).data;
 			for (const inbound of inbounds.slice(0, 5)) {
 				if (checked[inbound.id] == undefined) {
@@ -378,13 +382,13 @@ async function init() {
 
 					if (!calculatedValues.failed && calculatedValues.get < config.selfeval) {
 
-						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get <= (250 + (calculatedValues.give / 60) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade)) {
+						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get <= (250 + (calculatedValues.give / 60) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
 							let items = await getInventory(trade.user.id, cookie);
 							logToFile(items)
 							logToFile("Loaded inventory of " + trade.user.name)
 							for (let b = 0; b < items.length; b++) {
 								let i = items[b];
-								if (othersValues[i.assetId] == undefined || config.avoid[i.assetId] || othersValues[i.assetId][4] >= config.selfeval || othersValues[i.assetId][9] != -1 || othersValues[i.assetId][3] == -1 || othersValues[i.assetId][2] < config.underrapratio * othersValues[i.assetId][4] || i.isOnHold != false || myValues[i.assetId][7] != -1) {
+								if (othersValues[i.assetId] == undefined || config.avoid[i.assetId] || othersValues[i.assetId][4] >= config.selfeval || othersValues[i.assetId][9] != -1 || othersValues[i.assetId][3] == -1 || othersValues[i.assetId][2] < config.underrapratio * othersValues[i.assetId][4] || i.isOnHold != false || myValues[i.assetId][7] != -1 || othersValues[i.assetId][5]==0) {
 									delete items[b];
 								}
 							}
@@ -433,7 +437,7 @@ async function init() {
 							console.log(items)
 							// attempt an upgrade
 
-							async function downgrade() {
+							async function downgrade(overopdgratio=1) {
 								let downgradeValuedCombinations = []
 
 								let combinations = (await generateCombinations(((items.slice(0, 15)))))
@@ -450,7 +454,7 @@ async function init() {
 								for (item of ((myitems.slice(0, 25)))) {
 									let targetValue = myValues[item.assetId][4]
 									for (set of downgradeValuedCombinations) {
-										if (set.value <= targetValue * config.dgmaxratio && set.value >= targetValue * config.dgminratio && set.value - targetValue >= config.dgminop) {
+										if (set.value <= targetValue * config.dgmaxratio*overopdgratio && set.value >= targetValue * config.dgminratio && set.value - targetValue >= config.dgminop) {
 											logToFile("Trade Found With " + inbound.user.name)
 
 											let assets = []
@@ -579,12 +583,12 @@ async function init() {
 								}
 							}
  
-							async function upgrade() {
+							async function upgrade(lowballupgraderatio=1) {
 								for (item of ((items.slice(0, 20)))) {
 									console.log(myValues[item.assetId][0])
 									let targetValue = othersValues[item.assetId][4]
 									for (set of valuedCombinations) {
-										if ((set.value - targetValue <= config.upgmaxop) && set.value >= targetValue && set.value - targetValue <= (250 + ((set.value / 60) * (set.combination.length - 1)))) {
+										if ((set.value - targetValue <= config.upgmaxop) && set.value >= targetValue*lowballupgraderatio && set.value - targetValue <= (250 + ((set.value / 60) * (set.combination.length - 1)))) {
 											logToFile("Trade Found With " + inbound.user.name)
      
 											let assets = []
@@ -718,14 +722,21 @@ async function init() {
 							if (calculatedValues.downgrade == false) {
 								await upgrade()
 								if (!found) {
-									await downgrade()
+									await downgrade(1)
 								}
 							} else {
-								await downgrade()
+								await downgrade(1)
 								if (!found) {
-									await upgrade()
+									await upgrade(1)
 								}
 							}
+
+                            if(!found){
+                                await upgrade(0.95)
+                            }
+                            if(!found){
+                                await downgrade(1.05)
+                            }
 							if (!found) {
 								fetch("https://trades.roblox.com/v1/trades/" + inbound.id + "/decline", {
 									"headers": {
