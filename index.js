@@ -188,7 +188,7 @@ async function sumSides(trade, account) {
 
 async function getInventory(id, cookie) {
 	try {
-		const response = await fetch("https://inventory.roblox.com/v1/users/" + id + "/assets/collectibles?sortOrder=Desc&limit=100", {
+		const response = await fetch("https://inventory.roblox.com/v1/users/" + id + "/assets/collectibles?sortOrder=Asc&limit=100", {
 			headers: {
 				"accept": "*/*",
 				"accept-language": "en-US,en;q=0.9",
@@ -207,7 +207,8 @@ async function getInventory(id, cookie) {
 		});
 
 		if (!response.ok) {
-			throw new Error(`Error fetching inventory: ${response.statusText}`);
+			console.log(`Error fetching inventory: ${response.statusText}`);
+            return []
 		}
 
 		const data = await response.json();
@@ -308,10 +309,16 @@ async function sendRequest(account) {
 			}),
 			method: "POST"
 		});
+        
 		const data = await response.json();
+        if (!data || !data.data) {
+            logToFile(`Invalid inventory response for user ${id}: ${JSON.stringify(data)}`);
+            return [];
+        }
 		logToFile("Request successful:", data);
 	} catch (error) {
 		logToFile(error)
+        return []
 	}
 }
 config.accounts.forEach(account => {
@@ -325,9 +332,22 @@ config.accounts.forEach(account => {
 
 let checked = {}
 async function init() {
-	config.accounts.forEach(account => {
+
+	config.accounts.forEach(async account => {
 
 		let cookie = account.cookie
+        let myitems = await getInventory(account.UserID, cookie);
+        for (let b = 0; b < myitems.length; b++) {
+            let i = myitems[b];
+            if (myValues[i.assetId] == undefined || config.nft[i.assetId] || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][2] <= config.overrapcap)) {
+                delete myitems[b];
+            }
+        }
+        myitems = myitems.filter(function(el) {
+            return el != null;
+        });
+    
+        shuffleArray(myitems)
 		fetch("https://auth.roblox.com/v2/logout", {
 			headers: {
 				"accept": "*/*",
@@ -371,22 +391,10 @@ async function init() {
 							items = items.filter(function(el) {
 								return el != null;
 							});
-							let myitems = await getInventory(account.UserID, cookie);
-							for (let b = 0; b < myitems.length; b++) {
-								let i = myitems[b];
-								if (myValues[i.assetId] == undefined || config.nft[i.assetId] || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][2] <= config.overrapcap)) {
-									delete myitems[b];
-								}
-							}
-							myitems = myitems.filter(function(el) {
-								return el != null;
-							});
-
-							shuffleArray(myitems)
 							shuffleArray(items)
 							let valuedCombinations = []
 
-							let combinations = (await generateCombinations(((myitems.slice(0, 15)))))
+							let combinations = (await generateCombinations(((myitems.slice(0, 20)))))
 							combinations.forEach(function(combination) {
 								let sum = 0
 								combination.forEach(item => {
@@ -439,7 +447,7 @@ async function init() {
 										value: sum
 									})
 								})
-								for (item of ((myitems.slice(0, 20)))) {
+								for (item of ((myitems.slice(0, 25)))) {
 									let targetValue = myValues[item.assetId][4]
 									for (set of downgradeValuedCombinations) {
 										if (set.value <= targetValue * config.dgmaxratio && set.value >= targetValue * config.dgminratio && set.value - targetValue >= config.dgminop) {
