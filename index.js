@@ -71,6 +71,7 @@ async function generateCombinations(inputArray) {
 	});
 }
 
+
 async function loadInboundTrades(cookie) {
 	return fetch("https://trades.roblox.com/v1/trades/inbound?cursor=&limit=25&sortOrder=Desc", {
 			headers: {
@@ -210,11 +211,11 @@ async function getInventory(id, cookie) {
 			console.log(`Error fetching inventory: ${response.statusText}`);
             return []
 		}
+		const data = await response.json();
         if (!data || !data.data) {
             logToFile(`Invalid inventory response: ${JSON.stringify(data)}`);
             return [];
         }
-		const data = await response.json();
 		return data.data;
 	} catch (error) {
 		console.error(error);
@@ -344,14 +345,14 @@ async function init() {
                 delete myitems[b];
             }
         }
-        console.log(myitems)
         myitems = myitems.filter(function(el) {
             return el != null;
         });
     
         await shuffleArray(myitems)
-        console.log("myitems")
-        console.log(myitems)
+
+
+
 		fetch("https://auth.roblox.com/v2/logout", {
 			headers: {
 				"accept": "*/*",
@@ -384,7 +385,7 @@ async function init() {
 
 						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get <= (250 + (calculatedValues.give / 60) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
 							let items = await getInventory(trade.user.id, cookie);
-							logToFile(items)
+
 							logToFile("Loaded inventory of " + trade.user.name)
 							for (let b = 0; b < items.length; b++) {
 								let i = items[b];
@@ -396,9 +397,10 @@ async function init() {
 								return el != null;
 							});
 							shuffleArray(items)
+                            console.log(items)
 							let valuedCombinations = []
 
-							let combinations = (await generateCombinations(((myitems.slice(0, 20)))))
+							let combinations = (await generateCombinations(((myitems.slice(0, 10)))))
 							combinations.forEach(function(combination) {
 								let sum = 0
 								combination.forEach(item => {
@@ -426,7 +428,7 @@ async function init() {
 
 							receivingItems = receivingItems.filter(item => othersValues[item.assetId] != undefined);
 							sortByAssetId(receivingItems, othersValues)
-							console.log(receivingItems)
+				
 							for (item of givingItems) {
 								myitems = moveItemToFront(myitems, item.userAssetId)
 							}
@@ -434,23 +436,23 @@ async function init() {
 							for (item of receivingItems) {
 								items = moveItemToFront(items, item.userAssetId)
 							}
-							console.log(items)
 							// attempt an upgrade
+                            let downgradeValuedCombinations = []
 
+                            let combos = (await generateCombinations(((items.slice(0, 15)))))
+               
+                            for(combination of combos){
+                                let sum = 0
+                                for(item of combination){
+                                    sum += othersValues[item.assetId][4]
+                                }
+                                downgradeValuedCombinations.push({
+                                    combination,
+                                    value: sum
+                                })
+                            }
+                            console.log(downgradeValuedCombinations.length)
 							async function downgrade(overopdgratio=1) {
-								let downgradeValuedCombinations = []
-
-								let combinations = (await generateCombinations(((items.slice(0, 15)))))
-								combinations.forEach(function(combination) {
-									let sum = 0
-									combination.forEach(item => {
-										sum += othersValues[item.assetId][4]
-									})
-									downgradeValuedCombinations.push({
-										combination,
-										value: sum
-									})
-								})
 								for (item of ((myitems.slice(0, 25)))) {
 									let targetValue = myValues[item.assetId][4]
 									for (set of downgradeValuedCombinations) {
@@ -584,7 +586,7 @@ async function init() {
 							}
  
 							async function upgrade(lowballupgraderatio=1) {
-								for (item of ((items.slice(0, 20)))) {
+								for (item of ((items.slice(0, 15)))) {
 									console.log(myValues[item.assetId][0])
 									let targetValue = othersValues[item.assetId][4]
 									for (set of valuedCombinations) {
@@ -607,7 +609,7 @@ async function init() {
 												logToFile(set.value + " vs " + targetValue)
 												found = true;
 												logToFile(`{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${item.userAssetId}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`)
-
+                                                found=true
 												fetch(`https://trades.roblox.com/v1/trades/${inbound.id}/counter`, {
 													"headers": {
 														"accept": "application/json, text/plain, */*",
@@ -717,10 +719,202 @@ async function init() {
 									}
 								}
 							}
+                            async function swap(){
+                                let mycombinations=valuedCombinations.slice(0,200)
+                                let yourcombinations=downgradeValuedCombinations.slice(0,200)
+                                console.log(mycombinations.length, yourcombinations.length)
+            // Sort yourcombinations by value for efficient searching
+yourcombinations.sort((a, b) => a.value - b.value);
 
-							// attempt a downgrade
+let results = [];
+
+for (const combination of mycombinations) {
+  const lowerBound = combination.value * 1.05;
+  const upperBound = combination.value * 1.12;
+
+  // Binary search for the first valid yourcombination within the lower bound
+  let left = 0;
+  let right = yourcombinations.length - 1;
+  let startIndex = -1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    if (yourcombinations[mid].value >= lowerBound) {
+      startIndex = mid;
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+
+  // Collect all combinations within the range
+  if (startIndex !== -1) {
+    for (let i = startIndex; i < yourcombinations.length; i++) {
+      if (yourcombinations[i].value > upperBound) break;
+      results.push({
+        yourcombination: combination,
+        mycombination: yourcombinations[i]
+      });
+      if(results.length>=5){
+        break;
+      }
+    }
+  }
+  if(results.length>=5){
+    break;
+  }
+}
+
+shuffleArray(results)
+console.log(results)
+for (result of results){
+     
+    let assets = []
+    let getassets=[]
+    let sum=result.mycombination.value
+    let getsum=result.yourcombination.value
+    let present={}
+    let send = true;
+    console.log(result)
+    for (offeredItem of result.yourcombination.combination) {
+        present[offeredItem.assetId]=true
+        if (myValues[offeredItem.assetId][2]/myValues[offeredItem.assetId][4] >= config.overrapratio ||  myValues[offeredItem.assetId][4]>0.7*sum){
+            send = false
+        }
+        
+        assets.push(offeredItem.userAssetId)
+    }
+    for (gettingItem of result.mycombination.combination) {
+
+        if(present[gettingItem.assetId]!=undefined){
+            send=false;
+        }
+        getassets.push(gettingItem.userAssetId)
+    }
+    if(send){
+        found=true
+        logToFile("Swap Found With " + inbound.user.name)
+        for (offeredItem of result.mycombination.combination) {
+            logToFile(myValues[offeredItem.assetId][0])
+
+        }
+        logToFile("for")
+        for (gettingItem of result.yourcombination.combination) {
+            logToFile(othersValues[gettingItem.assetId][0])
+        }
+        logToFile(getsum + " vs " + sum)
+        logToFile(`{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${getassets.join(",")}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`)
+
+        fetch(`https://trades.roblox.com/v1/trades/${inbound.id}/counter`, {
+            "headers": {
+                "accept": "application/json, text/plain, */*",
+                "accept-language": "en-US,en;q=0.9",
+                "content-type": "application/json;charset=UTF-8",
+                "priority": "u=1, i",
+                "sec-ch-ua": "\"Not A(Brand\";v=\"8\", \"Chromium\";v=\"132\", \"Google Chrome\";v=\"132\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"macOS\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+                "x-csrf-token": csrf,
+                "cookie": cookie,
+                "Referer": "https://www.roblox.com/",
+                "Referrer-Policy": "strict-origin-when-cross-origin"
+            },
+            "body": `{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${getassets.join(",")}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`,
+            "method": "POST"
+        }).then(async res => {
+            let data = await res.json()
+
+            if (data["errors"] != undefined && data.errors[0].message.toLowerCase().search("challenge") != -1) {
+                logToFile(res.headers)
+                console.log(data)
+                let metadata = JSON.parse(atob(res.headers.get("rblx-challenge-metadata")))
+                logToFile(metadata)
+                let mainID = res.headers.get("rblx-challenge-id")
+                fetch("https://twostepverification.roblox.com/v1/users/" + account.UserID + "/challenges/authenticator/verify", {
+                    "headers": {
+                        "accept": "application/json, text/plain, */*",
+                        "accept-language": "en-US,en;q=0.9",
+                        "content-type": "application/json;charset=UTF-8",
+                        "priority": "u=1, i",
+                        "sec-ch-ua": "\"Not A(Brand\";v=\"8\", \"Chromium\";v=\"132\", \"Google Chrome\";v=\"132\"",
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": "\"macOS\"",
+                        "sec-fetch-dest": "empty",
+                        "sec-fetch-mode": "cors",
+                        "sec-fetch-site": "same-site",
+                        "x-csrf-token": csrf,
+                        "cookie": cookie,
+                        "Referer": "https://www.roblox.com/",
+                        "Referrer-Policy": "strict-origin-when-cross-origin"
+                    },
+                    "body": "{\"challengeId\":\"" + metadata.challengeId + "\",\"actionType\":\"Generic\",\"code\":\"" + authenticator.generate(account.TOTP) + "\"}",
+                    "method": "POST"
+                }).then(res => res.json()).then(twostepdata => {
+                    logToFile(twostepdata)
+                    fetch("https://apis.roblox.com/challenge/v1/continue", {
+                        "headers": {
+                            "accept": "application/json, text/plain, */*",
+                            "accept-language": "en-US,en;q=0.9",
+                            "content-type": "application/json;charset=UTF-8",
+                            "priority": "u=1, i",
+                            "sec-ch-ua": "\"Not A(Brand\";v=\"8\", \"Chromium\";v=\"132\", \"Google Chrome\";v=\"132\"",
+                            "sec-ch-ua-mobile": "?0",
+                            "sec-ch-ua-platform": "\"macOS\"",
+                            "sec-fetch-dest": "empty",
+                            "sec-fetch-mode": "cors",
+                            "sec-fetch-site": "same-site",
+                            "x-csrf-token": csrf,
+                            "cookie": cookie,
+                            "Referer": "https://www.roblox.com/",
+                            "Referrer-Policy": "strict-origin-when-cross-origin"
+                        },
+                        "body": "{\"challengeId\":\"" + mainID + "\",\"challengeType\":\"twostepverification\",\"challengeMetadata\":\"{\\\"verificationToken\\\":\\\"" + twostepdata.verificationToken + "\\\",\\\"rememberDevice\\\":false,\\\"challengeId\\\":\\\"" + metadata.challengeId + "\\\",\\\"actionType\\\":\\\"Generic\\\"}\"}",
+                        "method": "POST"
+                    }).then(async res => {
+                        logToFile(await res.json())
+                        logToFile("Completed TOTP, resending")
+                        fetch(`https://trades.roblox.com/v1/trades/${inbound.id}/counter`, {
+                            "headers": {
+                                "accept": "application/json, text/plain, */*",
+                                "accept-language": "en-US,en;q=0.9",
+                                "content-type": "application/json;charset=UTF-8",
+                                "priority": "u=1, i",
+                                "sec-ch-ua": "\"Not A(Brand\";v=\"8\", \"Chromium\";v=\"132\", \"Google Chrome\";v=\"132\"",
+                                "sec-ch-ua-mobile": "?0",
+                                "sec-ch-ua-platform": "\"macOS\"",
+                                "sec-fetch-dest": "empty",
+                                "sec-fetch-mode": "cors",
+                                "sec-fetch-site": "same-site",
+                                "x-csrf-token": csrf,
+                                "cookie": cookie,
+                                "Referer": "https://www.roblox.com/",
+                                "Referrer-Policy": "strict-origin-when-cross-origin"
+                            },
+                            "body": `{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${getassets.join(",")}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`,
+                            "method": "POST"
+                        }).then(async res => {
+                            let data = await res.json()
+                            logToFile(data)
+                        })
+                    })
+                })
+            } else {
+                logToFile(data)
+            }
+        })
+        break;
+    }
+    
+}
+                            }
+
+                         
+                            if(!found){
 							if (calculatedValues.downgrade == false) {
-								await upgrade()
+								await upgrade(1)
 								if (!found) {
 									await downgrade(1)
 								}
@@ -730,14 +924,17 @@ async function init() {
 									await upgrade(1)
 								}
 							}
-
+                            if(!found){
+                                await swap()
+                            }
                             if(!found){
                                 await upgrade(0.95)
                             }
                             if(!found){
                                 await downgrade(1.05)
                             }
-							if (!found) {
+                        }
+							if (!found ) {
 								fetch("https://trades.roblox.com/v1/trades/" + inbound.id + "/decline", {
 									"headers": {
 										"accept": "application/json, text/plain, */*",
@@ -769,5 +966,5 @@ async function init() {
 	})
 }
 
-setInterval(init, 20000)
+setInterval(init, 60000)
 init()
