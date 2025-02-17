@@ -1,33 +1,32 @@
 {   
-    "NOTE":"I have not tested this with items above 200k. Use at your own risk, if you're trading any uniquely valuable items, set custom values for them.",
-
-
-  
-    "selfeval":100000,
+    "selfeval":200000,
     "accounts":[{
-          "cookie":".ROBLOSECURITY=PUTITHERE;"
-      "TOTP":"OTP CODE HERE",
-        "RoliVerification":"_RoliVerification=PUTITHERE;",
-        "UserID":123
+          "cookie":".ROBLOSECURITY=INSERT;",
+         "UserID":2629975041,
+        "TOTP":"OTP HERE",
+        "RoliVerification":"_RoliVerification=RoliVerif Here;"
     }
 ],
+"channel":"discord channel id",
+"token":"Bot Token",
     "nft":{
-        "59848474":true,"33872839":true
+        "59848474":true,"33872839":true, "1272714":true, "20052135":true
     },
     "avoid":{
+        "76233968067050":true, "40497339":true
     },
     "myvalues":{
-       "553970961":84000
+   "553970961":85000
     },
     "othersvalues":{
-      "76233968067050":28500
+"76233968067050":27000
     },
-    "underrapratio":0.925076923,
-    "overrapratio":0.97,
+    "underrapratio":0.8076923,
+    "overrapratio":0.98,
     "overrapcap":150000,
-    "dgminratio":1.08,
-    "dgmaxratio":1.13,
-    "dgminop":2500,
-    "upgmaxop":3000
+    "dgminratio":1.09,
+    "dgmaxratio":1.14,
+    "dgminop":5000,
+    "upgmaxop":7000
 
 }
