@@ -17,7 +17,7 @@ Set Up:
 8. Reset token
 9. Copy the token
 10. Put it in config.json
-11. Invite it to a server using this link: https://finitereality.github.io/permissions-calculator/?v=0 (put in the client id and hit add at the bottom)
+11. Invite it to a server using this link: https://discord.com/oauth2/authorize?client_id=APPLICATIONIDGOESINHERE&scope=bot&permissions=0 (put in the application id)
 12. Copy the channel id you want notifications in by right clicking the channel in the channel list w/ developer mode enabled
 13. Put it in config.json
 14. npm install
