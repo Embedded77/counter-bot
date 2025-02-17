@@ -1,6 +1,6 @@
 # Embedded77's automatic countering bot
 
-Important: Never mess up your config and you use this at your own risk.
+Important: Never mess up your config
 
 Prerequisites:
 Node.js
@@ -13,10 +13,15 @@ Set Up:
 4. Remove your 2-step
 5. Add it back, but when you get to the page with the qr code hit enter manually and copy the code it gives you into config.json
 6. Return to the qr code page and add it to your authenticator app as normal
-7. npm install
-8. node index.js to run it.
-
-This must be run on the device from which you got the .ROBLOSECURITY.
+7. Set up a discord bot: https://discord.com/developers/applications -> new application -> bot
+8. Reset token
+9. Copy the token
+10. Put it in config.json
+11. Invite it to a server using this link: https://finitereality.github.io/permissions-calculator/?v=0 (put in the client id and hit add at the bottom)
+12. Copy the channel id you want notifications in by right clicking the channel in the channel list w/ developer mode enabled
+13. Put it in config.json
+14. npm install
+15. node index.js to run it.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
