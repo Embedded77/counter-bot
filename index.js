@@ -3,6 +3,71 @@ const path = require('path');
 
 const filePath = path.join(__dirname, 'output.txt');
 
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages
+    ]
+});
+
+function roundToTwoDecimals(num) {
+    return Number(num.toFixed(2));
+}
+
+
+const sqlite3 = require('sqlite3').verbose();
+
+class Ids {
+    constructor(dbFile = 'ids.db') {
+        this.db = new sqlite3.Database(dbFile, (err) => {
+            if (err) {
+                console.error('Error opening database:', err.message);
+            } else {
+                console.log('Connected to SQLite database.');
+                this.db.run(`CREATE TABLE IF NOT EXISTS ids (id TEXT PRIMARY KEY)`);
+            }
+        });
+    }
+
+    addID(id) {
+        return new Promise((resolve, reject) => {
+            const stmt = this.db.prepare(`INSERT INTO ids (id) VALUES (?)`);
+            stmt.run(id, function (err) {
+                if (err) {
+                    reject(err.message);
+                } else {
+                    resolve(`ID ${id} added.`);
+                }
+            });
+            stmt.finalize();
+        });
+    }
+
+    checkID(id) {
+        return new Promise((resolve, reject) => {
+            this.db.get(`SELECT id FROM ids WHERE id = ?`, [id], (err, row) => {
+                if (err) {
+                    reject(err.message);
+                } else {
+                    resolve(row ? true : false);
+                }
+            });
+        });
+    }
+
+    close() {
+        this.db.close((err) => {
+            if (err) {
+                console.error('Error closing database:', err.message);
+            } else {
+                console.log('Database closed.');
+            }
+        });
+    }
+}
+
 function logToFile(logMessage) {
 	console.log(logMessage)
 	logMessage = JSON.stringify(logMessage)
@@ -22,6 +87,7 @@ let {
 	authenticator
 } = require('otplib');
 const e = require('express');
+const { get } = require('http');
 
 function extractCSRFToken(text) {
 	const regex = /data-token="([^"]+)"/;
@@ -110,7 +176,30 @@ async function getTrade(id, cookie) {
 			return response.json();
 		});
 }
+async function countered(channel, givingItems,receivingItems, give, get ){
+	const embed = new EmbedBuilder()
+	.setTitle('Trade Countered')
 
+	.setColor('#89cff0')
+	.setTimestamp()
+.setFooter({ text: 'Counter Bot by Embedded77',  });
+// Dynamically add "Items you will GIVE"
+
+	let giveText = givingItems.map(item => `- ${myValues[item][0]}: ${c(myValues[item][4])}`)
+	embed.addFields({ name: '**Items you will GIVE**', value: giveText.join('\n'), inline: false });
+
+
+let getText = receivingItems.map(item => `- ${othersValues[item][0]}: ${c(othersValues[item][4])}`)
+
+embed.addFields({ name: '**Items you will GET**', value: getText.join('\n'), inline: false });
+
+embed.addFields(
+	{ name: '**Value**', value: `${c(give)} vs ${c(get)}`, inline: true },
+	{ name: '**% Win**', value: `${roundToTwoDecimals((get-give)/(give)*100)}%`, inline: true }
+);
+
+channel.send({ embeds: [embed] });
+}
 let myValues = {};
 let othersValues = {};
 async function fetchRolimonsValues() {
@@ -138,6 +227,8 @@ async function sumSides(trade, account) {
 	let receivingItems;
 	let givingRobux = 0;
 	let gettingRobux = 0;
+	let giverap = 0;
+	let getrap = 0;
 	let upgrade = false
 	let downgrade = false
 
@@ -154,9 +245,17 @@ async function sumSides(trade, account) {
 	}
 	let giveValue = 0;
 	let getValue = 0;
+	let trueget=0;
+	
 	for (let item of givingItems) {
+		giverap+=item.recentAveragePrice;
 		if (myValues[item.assetId]) {
-			giveValue += myValues[item.assetId][4];
+			let value=myValues[item.assetId][4];
+			if(myValues[item.assetId][3]==-1){
+				value=0.95*value
+			}
+			
+			giveValue += value;
 			if (myValues[item.assetId][4] > 0.9 * giveValue) {
 				downgrade = true;
 			}
@@ -165,7 +264,7 @@ async function sumSides(trade, account) {
 		}
 	}
 	for (let item of receivingItems) {
-
+		getrap+=item.recentAveragePrice;
 		if (myValues[item.assetId]) {
 			if (myValues[item.assetId][7] == -1) {
 				getValue += othersValues[item.assetId][4];
@@ -183,7 +282,9 @@ async function sumSides(trade, account) {
 		get: getValue + gettingRobux,
 		failed,
 		upgrade,
-		downgrade
+		downgrade,
+		giverap,
+		getrap
 	};
 }
 
@@ -239,7 +340,6 @@ function sortByAssetId(array, myValues) {
 		const valueA = myValues[a.assetId][4];
 		const valueB = myValues[b.assetId][4];
 
-		// Handle undefined keys gracefully
 		if (valueA === undefined || valueB === undefined) {
 			return 0;
 		}
@@ -267,9 +367,9 @@ function getRandomElements(arr) {
 	return randomElements;
 }
 
-function getRandomThree(arr) {
+function getRandomTwo(arr) {
 
-	const numElements = Math.min(3, arr.length);
+	const numElements = Math.min(2, arr.length);
 
 	const randomElements = [];
 
@@ -288,7 +388,20 @@ function getRandomThree(arr) {
 async function sendRequest(account) {
 	try {
 		let items = await getInventory(config.accounts[0].UserID, config.accounts[0].cookie)
-		let ids = getRandomElements(items).map(x => x.assetId)
+		let filteredItems = items.filter(item => myValues[item.assetId][4]>3000 && item.isOnHold==false);
+
+		let ids = getRandomElements(filteredItems).map(x => x.assetId)
+		let sum=0
+		let potentialItems=[]
+		for(id of ids){
+			sum+=myValues[id][4]
+		}
+			for(id of Object.keys(othersValues)){
+				let item=othersValues[id]
+				if(item[4]>=0.5*sum && item[5]>=2 && item[4]<=sum){
+					potentialItems.push(parseInt(id))
+				}
+			}
 		const response = await fetch(url, options = {
 			headers: {
 				"accept": "application/json, text/javascript, */*; q=0.01",
@@ -308,12 +421,12 @@ async function sendRequest(account) {
 			body: JSON.stringify({
 				player_id: config.accounts[0].UserID,
 				offer_item_ids: ids,
-				request_item_ids: getRandomThree([2409285794, 1609401184, 1213472762, 10159600649, 9255011, 19027209, 583722710, 583722932, 583721561, 162066057]), // list of demand items, i think this inceases trade input since more people will be looking for offers on these
-				request_tags: ["any"]
+				request_item_ids: getRandomTwo(potentialItems),
+				request_tags: ["any","adds"]
 			}),
 			method: "POST"
 		});
-        
+        // [494291269,1365767,33872870,51346471,439946101,20052135,439945864,553971558,628771505]
 		const data = await response.json();
         console.log(data)
 
@@ -323,15 +436,19 @@ async function sendRequest(account) {
         return []
 	}
 }
-config.accounts.forEach(account => {
-	sendRequest((account))
-})
-config.accounts.forEach(account => {
-	setInterval(function() {
-		sendRequest(account)
-	}, 1_440_000)
-})
 
+function c(x) {
+	var str=x.toString().split(".")
+	if(str[1]){
+	  str[0]=str[0]+"."
+	}else{
+	  str[1]=""
+	}
+  
+  return str[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")+str[1]
+  }
+
+let IdDB = new Ids();
 let checked = {}
 async function init() {
     await fetchRolimonsValues();
@@ -371,19 +488,50 @@ async function init() {
 			method: "POST",
 		}).then(async res => {
 			let csrf = res.headers.get("x-csrf-token")
-	
+			let channelId = config.channel; 
+			let channel = await client.channels.fetch(channelId);
 			let inbounds = (await loadInboundTrades(cookie)).data;
 			for (const inbound of inbounds.slice(0, 5)) {
-				if (checked[inbound.id] == undefined) {
-					checked[inbound.id] = true
+				let scanned=await IdDB.checkID(inbound.id);
+				if (scanned==false) {
+					
 					let found = false
 					let trade = await getTrade(inbound.id, cookie);
 
 					let calculatedValues = (await sumSides(trade, account));
+	
+		const embed = new EmbedBuilder()
+		.setTitle('Trade Inbound')
+		.setDescription("from "+inbound.user.name)
+		.setColor('#ffc0cb')
+		.setTimestamp()
+	.setFooter({ text: 'Counter Bot by Embedded77',  });
 
+
+		let giveText = calculatedValues.givingItems.map(item => `- ${myValues[item.assetId][0]}: ${c(myValues[item.assetId][4])}`)
+		embed.addFields({ name: '**Items you will GIVE**', value: giveText.join('\n'), inline: false });
+
+
+	let getText = calculatedValues.receivingItems.map(item => `- ${othersValues[item.assetId][0]}: ${c(othersValues[item.assetId][4])}`)
+	if(calculatedValues.givingRobux>0){
+		giveText.push("Robux: "+c(calculatedValues.givingRobux));
+	}
+	if(calculatedValues.gettingRobux>0){
+		giveText.push("Robux: "+c(calculatedValues.gettingRobux));
+	}
+	embed.addFields({ name: '**Items you will GET**', value: getText.join('\n'), inline: false });
+
+	embed.addFields(
+		{ name: '**Value**', value: `${c(calculatedValues.give)} vs ${c(calculatedValues.get)}`, inline: true },
+		{ name: '**Rap**', value: `${c(calculatedValues.giverap)} vs ${c(calculatedValues.getrap)}`, inline: true },
+		{ name: '**% Win**', value: `${roundToTwoDecimals((calculatedValues.get-calculatedValues.give)/(calculatedValues.give)*100)}%`, inline: true }
+	);
+
+	await channel.send({ embeds: [embed] });
+	await IdDB.addID(inbound.id)
 					if (!calculatedValues.failed && calculatedValues.get < config.selfeval) {
 
-						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get <= (250 + (calculatedValues.give / 60) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
+						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get >= (200 + (calculatedValues.get / 50) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
 							let items = await getInventory(trade.user.id, cookie);
 
 							logToFile("Loaded inventory of " + trade.user.name)
@@ -471,9 +619,11 @@ async function init() {
 												assets.push(offeredItem.userAssetId)
 											}
 											if (send == true) {
+
 												logToFile("for")
 												logToFile(myValues[item.assetId][0])
 												logToFile(set.value + " vs " + targetValue)
+												countered(channel,[item.assetId],set.combination.map(x=>x.assetId),targetValue,set.value)
 												found = true;
 												logToFile(`{\"offers\":[{\"userId\":${account.UserID},\"userAssetIds\":[${item.userAssetId}],\"robux\":0},{\"userId\":${trade.user.id},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`)
 												fetch(`https://trades.roblox.com/v1/trades/${inbound.id}/counter`, {
@@ -590,7 +740,8 @@ async function init() {
 									console.log(myValues[item.assetId][0])
 									let targetValue = othersValues[item.assetId][4]
 									for (set of valuedCombinations) {
-										if ((set.value - targetValue <= config.upgmaxop) && set.value >= targetValue*lowballupgraderatio && set.value - targetValue <= (250 + ((set.value / 60) * (set.combination.length - 1)))) {
+										console.log(set.value)
+										if ((set.value - targetValue <= config.upgmaxop) && set.value >= targetValue*lowballupgraderatio && set.value - targetValue <= (200 + ((targetValue / 65) * (set.combination.length - 1)))) {
 											logToFile("Trade Found With " + inbound.user.name)
      
 											let assets = []
@@ -607,6 +758,7 @@ async function init() {
 												logToFile("for")
 												logToFile(othersValues[item.assetId][0])
 												logToFile(set.value + " vs " + targetValue)
+												countered(channel,set.combination.map(x=>x.assetId),[item.assetId],set.value,targetValue)
 												found = true;
 												logToFile(`{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${item.userAssetId}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`)
                                                 found=true
@@ -803,6 +955,7 @@ for (result of results){
             logToFile(othersValues[gettingItem.assetId][0])
         }
         logToFile(getsum + " vs " + sum)
+		countered(channel,result.yourcombination.combination.map(x=>x.assetId),result.mycombination.combination.map(x=>x.assetId),getsum,sum)
         logToFile(`{\"offers\":[{\"userId\":${trade.user.id},\"userAssetIds\":[${getassets.join(",")}],\"robux\":0},{\"userId\":${account.UserID},\"userAssetIds\":[${assets.join(",")}],\"robux\":0}]}`)
 
         fetch(`https://trades.roblox.com/v1/trades/${inbound.id}/counter`, {
@@ -912,7 +1065,7 @@ for (result of results){
                             }
 
                          
-                            if(!found){
+                         
 							if (calculatedValues.downgrade == false) {
 								await upgrade(1)
 								if (!found) {
@@ -933,7 +1086,6 @@ for (result of results){
                             if(!found){
                                 await downgrade(1.05)
                             }
-                        }
 							if (!found ) {
 								fetch("https://trades.roblox.com/v1/trades/" + inbound.id + "/decline", {
 									"headers": {
@@ -954,6 +1106,13 @@ for (result of results){
 									"body": null,
 									"method": "POST"
 								}).then(res => logToFile("Declined trade from " + inbound.user.name))
+								let embed = new EmbedBuilder()
+								.setTitle('Trade Declined')
+								.setDescription("from "+inbound.user.name)
+								.setColor('#8b0000')
+								.setTimestamp()
+							.setFooter({ text: 'Counter Bot by Embedded77' });
+							channel.send({ embeds: [embed] });
 							}
 						}
 					}
@@ -965,6 +1124,24 @@ for (result of results){
 		logToFile("\n\n == ROUND FINISHED ==\n\n")
 	})
 }
+client.once('ready', async () => {
+    console.log(`Logged in as ${client.user.tag}`);
 
-setInterval(init, 60000)
-init()
+
+setInterval(init, 20000)
+
+await init()
+
+config.accounts.forEach(account => {
+	sendRequest((account))
+})
+config.accounts.forEach(account => {
+	setInterval(function() {
+		sendRequest(account)
+	}, 1_440_000)
+})
+
+
+})
+
+client.login(config.token)
