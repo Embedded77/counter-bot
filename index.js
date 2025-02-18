@@ -131,8 +131,7 @@ let config = require("./config.json");
 let {
 	authenticator
 } = require('otplib');
-const e = require('express');
-const { get } = require('http');
+
 
 function extractCSRFToken(text) {
 	const regex = /data-token="([^"]+)"/;
