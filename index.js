@@ -16,7 +16,6 @@ function roundToTwoDecimals(num) {
     return Number(num.toFixed(2));
 }
 
-
 const sqlite3 = require('sqlite3').verbose();
 
 class Ids {
@@ -26,19 +25,22 @@ class Ids {
                 console.error('Error opening database:', err.message);
             } else {
                 console.log('Connected to SQLite database.');
-                this.db.run(`CREATE TABLE IF NOT EXISTS ids (id TEXT PRIMARY KEY)`);
+                this.db.run(`CREATE TABLE IF NOT EXISTS ids (
+                    id TEXT PRIMARY KEY,
+                    persistent INTEGER DEFAULT 0
+                )`);
             }
         });
     }
 
-    addID(id) {
+    addID(id, persistent = false) {
         return new Promise((resolve, reject) => {
-            const stmt = this.db.prepare(`INSERT INTO ids (id) VALUES (?)`);
-            stmt.run(id, function (err) {
+            const stmt = this.db.prepare(`INSERT INTO ids (id, persistent) VALUES (?, ?)`);
+            stmt.run(id, persistent ? 1 : 0, function (err) {
                 if (err) {
                     reject(err.message);
                 } else {
-                    resolve(`ID ${id} added.`);
+                    resolve(`ID ${id} added${persistent ? ' (persistent)' : ''}.`);
                 }
             });
             stmt.finalize();
@@ -57,6 +59,47 @@ class Ids {
         });
     }
 
+    removeID(id) {
+        return new Promise((resolve, reject) => {
+            const stmt = this.db.prepare(`DELETE FROM ids WHERE id = ?`);
+            stmt.run(id, function (err) {
+                if (err) {
+                    reject(err.message);
+                } else if (this.changes === 0) {
+                    resolve(`ID ${id} not found.`);
+                } else {
+                    resolve(`ID ${id} removed.`);
+                }
+            });
+            stmt.finalize();
+        });
+    }
+
+    cleanDB(validIds) {
+        return new Promise((resolve, reject) => {
+            this.db.all(`SELECT id FROM ids WHERE persistent = 0`, [], (err, rows) => {
+                if (err) {
+                    return reject(err.message);
+                }
+                const idsToRemove = rows.map(row => row.id).filter(id => !validIds.includes(id));
+                
+                if (idsToRemove.length === 0) {
+                    return resolve('No IDs to remove.');
+                }
+                
+                const stmt = this.db.prepare(`DELETE FROM ids WHERE id = ? AND persistent = 0`);
+                idsToRemove.forEach(id => stmt.run(id));
+                stmt.finalize(err => {
+                    if (err) {
+                        reject(err.message);
+                    } else {
+                        resolve(`Removed ${idsToRemove.length} IDs.`);
+                    }
+                });
+            });
+        });
+    }
+
     close() {
         this.db.close((err) => {
             if (err) {
@@ -67,6 +110,8 @@ class Ids {
         });
     }
 }
+
+
 
 function logToFile(logMessage) {
 	console.log(logMessage)
@@ -152,6 +197,47 @@ async function loadInboundTrades(cookie) {
 		.then(response => {
 			if (!response.ok) {
 				logToFile(`Error Fetching Inbounds: ${response.status} ${response.statusText}`);
+				return "";
+			}
+			return response.json();
+		});
+}
+
+async function loadInactiveTrades(cookie) {
+	return fetch("https://trades.roblox.com/v1/trades/inactive?cursor=&limit=10&sortOrder=Desc", {
+			headers: {
+				"accept": "application/json, text/plain, */*",
+				"accept-language": "en-US,en;q=0.9",
+				"cookie": cookie,
+				"Referer": "https://www.roblox.com/",
+				"Referrer-Policy": "strict-origin-when-cross-origin"
+			},
+			method: "GET"
+		})
+		.then(response => {
+			if (!response.ok) {
+				logToFile(`Error Fetching Inbounds: ${response.status} ${response.statusText}`);
+				return "";
+			}
+			return response.json();
+		});
+}
+
+
+async function loadCompletedTrades(cookie) {
+	return fetch("https://trades.roblox.com/v1/trades/completed?cursor=&limit=10&sortOrder=Desc", {
+			headers: {
+				"accept": "application/json, text/plain, */*",
+				"accept-language": "en-US,en;q=0.9",
+				"cookie": cookie,
+				"Referer": "https://www.roblox.com/",
+				"Referrer-Policy": "strict-origin-when-cross-origin"
+			},
+			method: "GET"
+		})
+		.then(response => {
+			if (!response.ok) {
+				logToFile(`Error Fetching Completeds: ${response.status} ${response.statusText}`);
 				return "";
 			}
 			return response.json();
@@ -256,25 +342,31 @@ async function sumSides(trade, account) {
 			}
 			
 			giveValue += value;
-			if (myValues[item.assetId][4] > 0.9 * giveValue) {
-				downgrade = true;
-			}
+
 		} else {
 			giveValue += item.recentAveragePrice
 		}
 	}
+	for (let item of givingItems) {
+	if (myValues[item.assetId]!=undefined && myValues[item.assetId][4] > 0.9 * giveValue) {
+		downgrade = true;
+	}
+}
 	for (let item of receivingItems) {
 		getrap+=item.recentAveragePrice;
 		if (myValues[item.assetId]) {
 			if (myValues[item.assetId][7] == -1) {
 				getValue += othersValues[item.assetId][4];
-				if (othersValues[item.assetId][4] > 0.9 * getValue) {
-					upgrade = true;
-				}
+		
 			}
 
 		}
 	}
+	for (let item of receivingItems) {
+	if (othersValues[item.assetId]!=undefined && othersValues[item.assetId][4] > 0.9 * getValue) {
+		upgrade = true;
+	}
+}
 	return {
 		givingItems,
 		receivingItems,
@@ -393,12 +485,16 @@ async function sendRequest(account) {
 		let ids = getRandomElements(filteredItems).map(x => x.assetId)
 		let sum=0
 		let potentialItems=[]
+		let table={
+
+		}
 		for(id of ids){
 			sum+=myValues[id][4]
+			table[id]=true
 		}
 			for(id of Object.keys(othersValues)){
 				let item=othersValues[id]
-				if(item[4]>=0.5*sum && item[5]>=2 && item[4]<=sum){
+				if(item[4]>=0.5*sum && item[5]>=2 && item[4]<=sum && table[id]!=true){
 					potentialItems.push(parseInt(id))
 				}
 			}
@@ -437,6 +533,104 @@ async function sendRequest(account) {
 	}
 }
 
+
+async function pingInactive(account){
+	let channelId = config.channel; 
+	let channel = await client.channels.fetch(channelId);
+	let inbounds = (await loadInactiveTrades(account.cookie)).data;
+
+	for (const inbound of inbounds) {
+
+		let scanned=await IdDB.checkID(inbound.id);
+		if (scanned==false) {
+			
+			let trade = await getTrade(inbound.id, account.cookie);
+console.log(trade)
+			let calculatedValues = (await sumSides(trade, account));
+
+const embed = new EmbedBuilder()
+.setTitle('Outbound '+inbound.status)
+.setDescription("by "+inbound.user.name)
+.setColor('#808080')
+.setTimestamp()
+.setFooter({ text: 'Counter Bot by Embedded77',  });
+
+
+let giveText = calculatedValues.givingItems.map(item => `- ${myValues[item.assetId][0]}: ${c(myValues[item.assetId][4])}`)
+embed.addFields({ name: '**Items you would have given**', value: giveText.join('\n'), inline: false });
+
+
+let getText = calculatedValues.receivingItems.map(item => `- ${othersValues[item.assetId][0]}: ${c(othersValues[item.assetId][4])}`)
+if(calculatedValues.givingRobux>0){
+giveText.push("Robux: "+c(calculatedValues.givingRobux));
+}
+if(calculatedValues.gettingRobux>0){
+getText.push("Robux: "+c(calculatedValues.gettingRobux));
+}
+embed.addFields({ name: '**Items you would have received**', value: getText.join('\n'), inline: false });
+
+embed.addFields(
+{ name: '**Value**', value: `${c(calculatedValues.give)} vs ${c(calculatedValues.get)}`, inline: true },
+{ name: '**Rap**', value: `${c(calculatedValues.giverap)} vs ${c(calculatedValues.getrap)}`, inline: true },
+{ name: '**% Win**', value: `${roundToTwoDecimals((calculatedValues.get-calculatedValues.give)/(calculatedValues.give)*100)}%`, inline: true }
+);
+
+await channel.send({ embeds: [embed] });
+await IdDB.addID(inbound.id,true)
+}
+
+	}
+}
+
+
+
+async function pingCompleted(account){
+	let channelId = config.channel; 
+	let channel = await client.channels.fetch(channelId);
+	let inbounds = (await loadCompletedTrades(account.cookie)).data;
+
+	for (const inbound of inbounds) {
+
+		let scanned=await IdDB.checkID(inbound.id);
+		if (scanned==false) {
+			
+			let trade = await getTrade(inbound.id, account.cookie);
+console.log(trade)
+			let calculatedValues = (await sumSides(trade, account));
+
+const embed = new EmbedBuilder()
+.setTitle('Trade Completed')
+.setDescription("with "+inbound.user.name)
+.setColor('#008000')
+.setTimestamp()
+.setFooter({ text: 'Counter Bot by Embedded77',  });
+
+try{
+
+await IdDB.addID(inbound.id,true)
+let giveText = calculatedValues.givingItems.map(item => `- ${item.name}`)
+embed.addFields({ name: '**Items you GAVE**', value: giveText.join('\n'), inline: false });
+
+
+let getText = calculatedValues.receivingItems.map(item => `- ${item.name}`)
+if(calculatedValues.givingRobux>0){
+giveText.push("Robux: "+c(calculatedValues.givingRobux));
+}
+if(calculatedValues.gettingRobux>0){
+getText.push("Robux: "+c(calculatedValues.gettingRobux));
+}
+embed.addFields({ name: '**Items you RECEIVED**', value: getText.join('\n'), inline: false });
+
+await channel.send({ embeds: [embed] });
+}
+catch(err){
+	console.log(err)
+}
+}
+
+	}
+}
+
 function c(x) {
 	var str=x.toString().split(".")
 	if(str[1]){
@@ -448,17 +642,22 @@ function c(x) {
   return str[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")+str[1]
   }
 
+
 let IdDB = new Ids();
+
 let checked = {}
 async function init() {
+	
     await fetchRolimonsValues();
 	config.accounts.forEach(async account => {
 
 		let cookie = account.cookie
         let myitems = await getInventory(account.UserID, cookie);
-        for (let b = 0; b < myitems.length; b++) {
-            let i = myitems[b];
-            if (myValues[i.assetId] == undefined || config.nft[i.assetId]!=undefined || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][3]!=-1 && myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][4] <= config.overrapcap) || i.isOnHold != false) {
+        for (let b = 0; b < myitems.length; b++) { let i = myitems[b];
+            
+
+			myValues[i.assetId]=[i.name,0,i.recentAveragePrice,i.recentAveragePrice,i.recentAveragePrice,0,0,0,0,0,0,0,0,0]
+           if (myValues[i.assetId] == undefined || config.nft[i.assetId]!=undefined || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][3]!=-1 && myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][4] <= config.overrapcap) || i.isOnHold != false) {
                 delete myitems[b];
             }
         }
@@ -487,17 +686,22 @@ async function init() {
 			body: null,
 			method: "POST",
 		}).then(async res => {
+			pingInactive(account)
+			pingCompleted(account)
 			let csrf = res.headers.get("x-csrf-token")
 			let channelId = config.channel; 
 			let channel = await client.channels.fetch(channelId);
 			let inbounds = (await loadInboundTrades(cookie)).data;
-			for (const inbound of inbounds.slice(0, 5)) {
+			let ids=inbounds.map(inbound=>inbound.id);
+
+			for (const inbound of inbounds.slice(0, 10)) {
+
 				let scanned=await IdDB.checkID(inbound.id);
 				if (scanned==false) {
 					
 					let found = false
 					let trade = await getTrade(inbound.id, cookie);
-
+					console.log(trade)
 					let calculatedValues = (await sumSides(trade, account));
 	
 		const embed = new EmbedBuilder()
@@ -517,7 +721,7 @@ async function init() {
 		giveText.push("Robux: "+c(calculatedValues.givingRobux));
 	}
 	if(calculatedValues.gettingRobux>0){
-		giveText.push("Robux: "+c(calculatedValues.gettingRobux));
+		getText.push("Robux: "+c(calculatedValues.gettingRobux));
 	}
 	embed.addFields({ name: '**Items you will GET**', value: getText.join('\n'), inline: false });
 
@@ -527,11 +731,12 @@ async function init() {
 		{ name: '**% Win**', value: `${roundToTwoDecimals((calculatedValues.get-calculatedValues.give)/(calculatedValues.give)*100)}%`, inline: true }
 	);
 
-	await channel.send({ embeds: [embed] });
+
 	await IdDB.addID(inbound.id)
 					if (!calculatedValues.failed && calculatedValues.get < config.selfeval) {
-
-						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * config.dgminratio && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get >= (200 + (calculatedValues.get / 50) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
+						await channel.send({ embeds: [embed] });
+						console.log(calculatedValues)
+						if ((calculatedValues.get + config.upgmaxop < calculatedValues.give && calculatedValues.upgrade) || (calculatedValues.get < calculatedValues.give*1.01 && calculatedValues.downgrade == false && calculatedValues.upgrade == false) || (calculatedValues.get < calculatedValues.give * (config.dgminratio-0.02) && calculatedValues.downgrade == true) || (calculatedValues.give - calculatedValues.get >= 1.5*(200 + (calculatedValues.get / 50) * (calculatedValues.givingItems.length - 1)) && calculatedValues.upgrade) ) {
 							let items = await getInventory(trade.user.id, cookie);
 
 							logToFile("Loaded inventory of " + trade.user.name)
@@ -613,13 +818,13 @@ async function init() {
 											for (offeredItem of set.combination) {
 
 												logToFile(othersValues[offeredItem.assetId][0])
-                                                if(offeredItem.assetId==item.assetId){
+                                                if(offeredItem.assetId==item.assetId || othersValues[offeredItem.assetId][4]>=0.9*myValues[item.assetId][4]){
                                                     send=false;
                                                 }
 												assets.push(offeredItem.userAssetId)
 											}
 											if (send == true) {
-
+												
 												logToFile("for")
 												logToFile(myValues[item.assetId][0])
 												logToFile(set.value + " vs " + targetValue)
@@ -648,6 +853,9 @@ async function init() {
 												}).then(async res => {
 													let data = await res.json()
 													logToFile(data)
+													if(data["errors"]==undefined){
+														IdDB.removeID(inbound.id)				
+													}
 													if (data["errors"] && data.errors[0].message.toLowerCase().search("challenge") != -1) {
 														logToFile(res.headers)
 														let metadata = JSON.parse(atob(res.headers.get("rblx-challenge-metadata")))
@@ -717,6 +925,9 @@ async function init() {
 																	"method": "POST"
 																}).then(async res => {
 																	let data = await res.json()
+																	if(data["errors"]==undefined){
+																		IdDB.removeID(inbound.id)				
+																	}
 																	logToFile(data)
 																})
 															})
@@ -783,7 +994,9 @@ async function init() {
 													"method": "POST"
 												}).then(async res => {
 													let data = await res.json()
-
+													if(data["errors"]==undefined){
+														IdDB.removeID(inbound.id)				
+													}
 													if (data["errors"] != undefined && data.errors[0].message.toLowerCase().search("challenge") != -1) {
 														logToFile(res.headers)
 														console.log(data)
@@ -855,6 +1068,9 @@ async function init() {
 																}).then(async res => {
 																	let data = await res.json()
 																	logToFile(data)
+																	if(data["errors"]==undefined){
+																		IdDB.removeID(inbound.id)				
+																	}
 																})
 															})
 														})
@@ -979,7 +1195,9 @@ for (result of results){
             "method": "POST"
         }).then(async res => {
             let data = await res.json()
-
+			if(data["errors"]==undefined){
+				IdDB.removeID(inbound.id)				
+			}
             if (data["errors"] != undefined && data.errors[0].message.toLowerCase().search("challenge") != -1) {
                 logToFile(res.headers)
                 console.log(data)
@@ -1051,6 +1269,9 @@ for (result of results){
                         }).then(async res => {
                             let data = await res.json()
                             logToFile(data)
+							if(data["errors"]==undefined){
+								IdDB.removeID(inbound.id)				
+							}
                         })
                     })
                 })
@@ -1116,6 +1337,9 @@ for (result of results){
 							}
 						}
 					}
+					else{
+						await channel.send({embeds: [embed] });
+					}
 				}
 			}
 
@@ -1131,7 +1355,6 @@ client.once('ready', async () => {
 setInterval(init, 20000)
 
 await init()
-
 config.accounts.forEach(account => {
 	sendRequest((account))
 })
