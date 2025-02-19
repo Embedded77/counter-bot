@@ -653,10 +653,7 @@ async function init() {
 		let cookie = account.cookie
         let myitems = await getInventory(account.UserID, cookie);
         for (let b = 0; b < myitems.length; b++) { let i = myitems[b];
-            
-
-			myValues[i.assetId]=[i.name,0,i.recentAveragePrice,i.recentAveragePrice,i.recentAveragePrice,0,0,0,0,0,0,0,0,0]
-           if (myValues[i.assetId] == undefined || config.nft[i.assetId]!=undefined || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][3]!=-1 && myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][4] <= config.overrapcap) || i.isOnHold != false) {
+			if (myValues[i.assetId] == undefined || config.nft[i.assetId]!=undefined || myValues[i.assetId][4] >= config.selfeval || myValues[i.assetId][9] != -1 || (myValues[i.assetId][3]!=-1 && myValues[i.assetId][2] > config.overrapratio * myValues[i.assetId][4] && myValues[i.assetId][4] <= config.overrapcap) || i.isOnHold != false) {
                 delete myitems[b];
             }
         }
