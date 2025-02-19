@@ -1,3 +1,7 @@
+
+let config = require("./config.json");
+const redactedMode=config.redactedMode
+
 const fs = require('fs');
 const path = require('path');
 
@@ -127,7 +131,6 @@ function logToFile(logMessage) {
 	});
 }
 
-let config = require("./config.json");
 let {
 	authenticator
 } = require('otplib');
@@ -267,7 +270,7 @@ async function countered(channel, givingItems,receivingItems, give, get ){
 
 	.setColor('#89cff0')
 	.setTimestamp()
-.setFooter({ text: 'Counter Bot by Embedded77',  });
+.setFooter({ text: 'discord.gg/yat5gNGEsJ',  });
 // Dynamically add "Items you will GIVE"
 
 	let giveText = givingItems.map(item => `- ${myValues[item][0]}: ${c(myValues[item][4])}`)
@@ -539,7 +542,9 @@ async function pingInactive(account){
 	let inbounds = (await loadInactiveTrades(account.cookie)).data;
 
 	for (const inbound of inbounds) {
-
+		if(redactedMode){
+			inbound.user.name="REDACTED"
+		}
 		let scanned=await IdDB.checkID(inbound.id);
 		if (scanned==false) {
 			
@@ -552,7 +557,7 @@ const embed = new EmbedBuilder()
 .setDescription("by "+inbound.user.name)
 .setColor('#808080')
 .setTimestamp()
-.setFooter({ text: 'Counter Bot by Embedded77',  });
+.setFooter({ text: 'discord.gg/yat5gNGEsJ',  });
 
 
 let giveText = calculatedValues.givingItems.map(item => `- ${myValues[item.assetId][0]}: ${c(myValues[item.assetId][4])}`)
@@ -589,7 +594,9 @@ async function pingCompleted(account){
 	let inbounds = (await loadCompletedTrades(account.cookie)).data;
 
 	for (const inbound of inbounds) {
-
+		if(redactedMode){
+			inbound.user.name="REDACTED"
+		}
 		let scanned=await IdDB.checkID(inbound.id);
 		if (scanned==false) {
 			
@@ -602,7 +609,7 @@ const embed = new EmbedBuilder()
 .setDescription("with "+inbound.user.name)
 .setColor('#008000')
 .setTimestamp()
-.setFooter({ text: 'Counter Bot by Embedded77',  });
+.setFooter({ text: 'discord.gg/yat5gNGEsJ',  });
 
 try{
 
@@ -691,7 +698,9 @@ async function init() {
 			let ids=inbounds.map(inbound=>inbound.id);
 
 			for (const inbound of inbounds.slice(0, 10)) {
-
+				if(redactedMode){
+					inbound.user.name="REDACTED"
+				}
 				let scanned=await IdDB.checkID(inbound.id);
 				if (scanned==false) {
 					
@@ -705,7 +714,7 @@ async function init() {
 		.setDescription("from "+inbound.user.name)
 		.setColor('#ffc0cb')
 		.setTimestamp()
-	.setFooter({ text: 'Counter Bot by Embedded77',  });
+	.setFooter({ text: 'discord.gg/yat5gNGEsJ',  });
 
 
 		let giveText = calculatedValues.givingItems.map(item => `- ${myValues[item.assetId][0]}: ${c(myValues[item.assetId][4])}`)
@@ -850,7 +859,7 @@ async function init() {
 													let data = await res.json()
 													logToFile(data)
 													if(data["errors"]==undefined){
-														IdDB.removeID(inbound.id)				
+																	
 													}
 													if (data["errors"] && data.errors[0].message.toLowerCase().search("challenge") != -1) {
 														logToFile(res.headers)
@@ -922,7 +931,7 @@ async function init() {
 																}).then(async res => {
 																	let data = await res.json()
 																	if(data["errors"]==undefined){
-																		IdDB.removeID(inbound.id)				
+																					
 																	}
 																	logToFile(data)
 																})
@@ -991,7 +1000,7 @@ async function init() {
 												}).then(async res => {
 													let data = await res.json()
 													if(data["errors"]==undefined){
-														IdDB.removeID(inbound.id)				
+																	
 													}
 													if (data["errors"] != undefined && data.errors[0].message.toLowerCase().search("challenge") != -1) {
 														logToFile(res.headers)
@@ -1065,7 +1074,7 @@ async function init() {
 																	let data = await res.json()
 																	logToFile(data)
 																	if(data["errors"]==undefined){
-																		IdDB.removeID(inbound.id)				
+																					
 																	}
 																})
 															})
@@ -1192,7 +1201,7 @@ for (result of results){
         }).then(async res => {
             let data = await res.json()
 			if(data["errors"]==undefined){
-				IdDB.removeID(inbound.id)				
+							
 			}
             if (data["errors"] != undefined && data.errors[0].message.toLowerCase().search("challenge") != -1) {
                 logToFile(res.headers)
@@ -1266,7 +1275,7 @@ for (result of results){
                             let data = await res.json()
                             logToFile(data)
 							if(data["errors"]==undefined){
-								IdDB.removeID(inbound.id)				
+											
 							}
                         })
                     })
@@ -1328,7 +1337,7 @@ for (result of results){
 								.setDescription("from "+inbound.user.name)
 								.setColor('#8b0000')
 								.setTimestamp()
-							.setFooter({ text: 'Counter Bot by Embedded77' });
+							.setFooter({ text: 'discord.gg/yat5gNGEsJ' });
 							channel.send({ embeds: [embed] });
 							}
 						}
